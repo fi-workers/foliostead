@@ -1,0 +1,40 @@
+{
+  "name": "foliostead",
+  "version": "0.1.0",
+  "description": "Self-hosted reading and publishing for your Obsidian vault. Serves notes as clean web pages from a local server.",
+  "main": "main.js",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/w0nder-official/foliostead.git"
+  },
+  "bugs": {
+    "url": "https://github.com/w0nder-official/foliostead/issues"
+  },
+  "homepage": "https://github.com/w0nder-official/foliostead#readme",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "markdown",
+    "self-hosted",
+    "publish"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.14.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.21.5",
+    "obsidian": "latest",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  }
+}

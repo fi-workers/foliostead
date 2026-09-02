@@ -1,0 +1,10 @@
+{
+  "id": "foliostead",
+  "name": "Foliostead",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Serves your vault's Markdown notes as clean, readable web pages from a local HTTP server on 127.0.0.1.",
+  "author": "w0nder",
+  "authorUrl": "https://github.com/w0nder-official",
+  "isDesktopOnly": true
+}
