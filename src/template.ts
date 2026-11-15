@@ -1,4 +1,4 @@
-import { escapeHtml } from "./utils";
+import { escapeHtml } from './utils';
 
 /**
  * 외부 CSS 프레임워크 없이 직접 작성한 읽기용 스타일.
@@ -262,10 +262,10 @@ export interface PageOptions {
 }
 
 /** AGPL-3.0 제13조: 네트워크 이용자에게 소스 코드 취득 경로를 제공해야 한다. */
-const SOURCE_URL = "https://github.com/w0nder-official/foliostead";
+const SOURCE_URL = 'https://github.com/w0nder-official/foliostead';
 
 export function renderPage({ title, bodyHtml, subtitle }: PageOptions): string {
-	const subtitleHtml = subtitle ? `<p class="doc-meta">${escapeHtml(subtitle)}</p>` : "";
+	const subtitleHtml = subtitle ? `<p class="doc-meta">${escapeHtml(subtitle)}</p>` : '';
 	return `<!doctype html>
 <html lang="ko">
 <head>
@@ -293,7 +293,7 @@ Served by <a href="${SOURCE_URL}" rel="noreferrer">Foliostead</a>
 
 export function renderNotFoundPage(requestedPath: string): string {
 	return renderPage({
-		title: "Not found",
+		title: 'Not found',
 		bodyHtml: `<p class="notice">이 Vault에서 <code>${escapeHtml(requestedPath)}</code> 에 해당하는 노트를 찾지 못했습니다.</p>
 <p><a href="/">전체 노트 목록</a></p>`,
 	});
@@ -301,7 +301,7 @@ export function renderNotFoundPage(requestedPath: string): string {
 
 export function renderErrorPage(message: string): string {
 	return renderPage({
-		title: "Error",
+		title: 'Error',
 		bodyHtml: `<p class="notice">노트를 렌더링하는 중 오류가 발생했습니다.</p>
 <pre><code>${escapeHtml(message)}</code></pre>
 <p><a href="/">전체 노트 목록</a></p>`,
@@ -318,12 +318,12 @@ export function renderIndexPage(vaultName: string, files: { path: string; url: s
 
 	const items = files
 		.map((file) => {
-			const lastSlash = file.path.lastIndexOf("/");
-			const dir = lastSlash === -1 ? "" : file.path.slice(0, lastSlash + 1);
-			const name = file.path.slice(lastSlash + 1).replace(/\.md$/i, "");
+			const lastSlash = file.path.lastIndexOf('/');
+			const dir = lastSlash === -1 ? '' : file.path.slice(0, lastSlash + 1);
+			const name = file.path.slice(lastSlash + 1).replace(/\.md$/i, '');
 			return `<li><a href="${escapeHtml(file.url)}"><span class="dir">${escapeHtml(dir)}</span>${escapeHtml(name)}</a></li>`;
 		})
-		.join("\n");
+		.join('\n');
 
 	return renderPage({
 		title: vaultName,

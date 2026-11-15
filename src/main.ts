@@ -1,11 +1,8 @@
-import { Notice, Plugin, TFile } from "obsidian";
-import { FoliosteadServer } from "./server";
-import {
-	DEFAULT_SETTINGS,
-	FoliosteadSettingTab,
-	type FoliosteadSettings,
-} from "./settings";
-import { noteUrlPath } from "./utils";
+import { Notice, Plugin, TFile } from 'obsidian';
+
+import { FoliosteadServer } from './server';
+import { DEFAULT_SETTINGS, FoliosteadSettingTab, type FoliosteadSettings } from './settings';
+import { noteUrlPath } from './utils';
 
 export default class FoliosteadPlugin extends Plugin {
 	settings: FoliosteadSettings = { ...DEFAULT_SETTINGS };
@@ -18,14 +15,12 @@ export default class FoliosteadPlugin extends Plugin {
 		this.addSettingTab(new FoliosteadSettingTab(this.app, this));
 
 		this.addCommand({
-			id: "open-current-note-in-browser",
-			name: "Open current note in browser",
+			id: 'open-current-note-in-browser',
+			name: 'Open current note in browser',
 			callback: () => this.openCurrentNoteInBrowser(),
 		});
 
-		this.addRibbonIcon("globe", "Open current note in browser", () =>
-			this.openCurrentNoteInBrowser()
-		);
+		this.addRibbonIcon('globe', 'Open current note in browser', () => this.openCurrentNoteInBrowser());
 
 		// metadataCache가 준비된 뒤에 서버를 띄운다.
 		// (link resolution과 파일 목록이 처음 요청부터 정확해야 하므로)
@@ -59,17 +54,17 @@ export default class FoliosteadPlugin extends Plugin {
 	private openCurrentNoteInBrowser(): void {
 		const baseUrl = this.server?.baseUrl();
 		if (!baseUrl) {
-			new Notice("Foliostead: 서버가 실행 중이 아닙니다. 설정에서 활성화하세요.");
+			new Notice('Foliostead: 서버가 실행 중이 아닙니다. 설정에서 활성화하세요.');
 			return;
 		}
 
 		const file = this.app.workspace.getActiveFile();
-		if (!(file instanceof TFile) || file.extension !== "md") {
-			new Notice("Foliostead: 열려 있는 Markdown 노트가 없습니다.");
+		if (!(file instanceof TFile) || file.extension !== 'md') {
+			new Notice('Foliostead: 열려 있는 Markdown 노트가 없습니다.');
 			return;
 		}
 
 		// Obsidian desktop에서 window.open의 외부 URL은 시스템 기본 브라우저로 열린다.
-		window.open(baseUrl + noteUrlPath(file.path), "_blank");
+		window.open(baseUrl + noteUrlPath(file.path), '_blank');
 	}
 }
