@@ -1,19 +1,9 @@
 {
-  "compilerOptions": {
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES2020",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "bundler",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["DOM", "ES2020"],
-    "types": ["node"]
-  },
-  "include": ["src/**/*.ts"]
+	"extends": "@fi-workers/lint/tsconfig/base.json",
+	"compilerOptions": {
+		// Obsidian 플러그인은 Electron 렌더러에서 돈다: DOM과 Node API를 모두 쓴다. 번들은 esbuild가 만든다.
+		"lib": ["DOM", "ES2024"],
+		"types": ["node"]
+	},
+	"include": ["src/**/*.ts", "*.config.ts"]
 }
