@@ -8,6 +8,16 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # GitHub Packages의 비공개 패키지라 Dependabot이 받을 수 없다(401, private_source_authentication_failure).
+      # fi-workers 공용 린트 롤아웃에서 정확한 버전으로 직접 올린다.
+      - dependency-name: '@fi-workers/lint'
+      # TypeScript 메이저는 공용 린트(@fi-workers/lint)와 같이 움직인다.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # Node 24 LTS(.nvmrc 24.22.1)에 맞춘 타입이다. Node를 올릴 때 같이 올린다.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: '/'
