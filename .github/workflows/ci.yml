@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,8 +26,22 @@ jobs:
           cache: npm
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Typecheck and build
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint and typecheck (Oxlint + TypeScript 7)
+        run: npm run lint
+
+      - name: Unused code and dependencies (knip)
+        run: npm run knip
+
+      - name: Banned syntax (ast-grep)
+        run: npm run ast-grep
+
+      - name: Build
         run: npm run build
 
       - name: Verify manifest / versions.json consistency

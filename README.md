@@ -18,13 +18,13 @@ Vault                            브라우저
 
 ## 로드맵
 
-| Phase | 내용 | 상태 |
-| --- | --- | --- |
-| 0 | 로컬 읽기 뷰어 — localhost, 타이포그래피, wikilink 정확 해석 | ✅ v0.1 |
-| 1 | 배포 인프라 — 멀티 PC 설치, 릴리스 자동화, 자동 업데이트 | 진행 중 |
-| 2 | **원격 공개 (Publish 대체)** — 프록시/터널, 도메인, TLS, 접근 제어 | 예정 |
-| 3 | **동기화 (Sync 대체)** — 기기 간 동기화, 충돌 해결, 버전 이력 | 예정 |
-| 4 | 관리형 호스팅 — 자체 구축이 어려운 사용자를 위한 대행 | 예정 |
+| Phase | 내용                                                               | 상태    |
+| ----- | ------------------------------------------------------------------ | ------- |
+| 0     | 로컬 읽기 뷰어 — localhost, 타이포그래피, wikilink 정확 해석       | ✅ v0.1 |
+| 1     | 배포 인프라 — 멀티 PC 설치, 릴리스 자동화, 자동 업데이트           | 진행 중 |
+| 2     | **원격 공개 (Publish 대체)** — 프록시/터널, 도메인, TLS, 접근 제어 | 예정    |
+| 3     | **동기화 (Sync 대체)** — 기기 간 동기화, 충돌 해결, 버전 이력      | 예정    |
+| 4     | 관리형 호스팅 — 자체 구축이 어려운 사용자를 위한 대행              | 예정    |
 
 원칙: **로컬 Vault가 언제나 원본입니다.** 서버가 죽어도 노트는 그대로 남습니다.
 
@@ -43,13 +43,13 @@ table / horizontal rule / images
 
 ### 지원하는 Obsidian 문법
 
-| 문법 | 동작 |
-| --- | --- |
-| `[[Note]]` | 해당 노트의 웹 URL로 링크 |
-| `[[Note\|Alias]]` | anchor text를 `Alias`로 |
-| `[[Note#Heading]]` | 노트 URL + heading 앵커 |
-| `![[image.png]]` | `<img>`로 렌더링 (`/_assets/...`에서 서빙) |
-| `> [!warning] 제목` | callout 블록 |
+| 문법                | 동작                                       |
+| ------------------- | ------------------------------------------ |
+| `[[Note]]`          | 해당 노트의 웹 URL로 링크                  |
+| `[[Note\|Alias]]`   | anchor text를 `Alias`로                    |
+| `[[Note#Heading]]`  | 노트 URL + heading 앵커                    |
+| `![[image.png]]`    | `<img>`로 렌더링 (`/_assets/...`에서 서빙) |
+| `> [!warning] 제목` | callout 블록                               |
 
 링크 해석은 폴더 규칙을 흉내내지 않고 Obsidian의 `metadataCache.getFirstLinkpathDest()`를
 그대로 사용합니다. 즉 Obsidian 안에서 링크가 걸리는 문서와 웹에서 열리는 문서가 같습니다.
@@ -90,11 +90,16 @@ cp main.js manifest.json "$VAULT/.obsidian/plugins/foliostead/"
 
 ## 개발
 
+린트 설정(`@fi-workers/lint`)은 GitHub Packages에서 받으므로 설치할 때 `read:packages` 권한이 있는
+토큰이 필요합니다. `.npmrc`가 `NODE_AUTH_TOKEN` 환경 변수를 읽습니다.
+
 ```bash
-npm install
-npm run dev        # esbuild watch (main.js를 계속 다시 만듦)
-npm run build      # 타입체크 + production 번들
-npm run typecheck  # 타입체크만
+NODE_AUTH_TOKEN=$(gh auth token) npm install
+npm run dev           # esbuild watch (main.js를 계속 다시 만듦)
+npm run build         # production 번들
+npm run lint          # Oxlint (타입 인식 규칙 + TypeScript 7 타입 검사)
+npm run format        # Oxfmt로 포맷
+npm run verify        # 포맷 검사, 린트, knip, ast-grep, 빌드 (CI와 같음)
 ```
 
 개발 PC에서는 복사 대신 심볼릭 링크가 편합니다.
@@ -119,10 +124,10 @@ git push --follow-tags
 
 ## 설정
 
-| 항목 | 기본값 | 설명 |
-| --- | --- | --- |
-| Enable server | on | 끄면 서버를 닫습니다. |
-| Port | 27123 | 1024–65535. 바꾸면 기존 서버를 닫고 새 포트로 다시 띄웁니다. |
+| 항목          | 기본값 | 설명                                                         |
+| ------------- | ------ | ------------------------------------------------------------ |
+| Enable server | on     | 끄면 서버를 닫습니다.                                        |
+| Port          | 27123  | 1024–65535. 바꾸면 기존 서버를 닫고 새 포트로 다시 띄웁니다. |
 
 포트가 이미 사용 중이면 Obsidian Notice로 알려주고, 앱은 그대로 동작합니다.
 

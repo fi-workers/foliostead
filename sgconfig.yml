@@ -1,0 +1,4 @@
+ruleDirs:
+  - node_modules/@fi-workers/lint/ast-grep/rules
+languageGlobs:
+  tsx: ['*.ts', '*.mts', '*.cts']
