@@ -37,7 +37,7 @@
 	},
 	"devDependencies": {
 		"@ast-grep/cli": "0.51.2",
-		"@fi-workers/lint": "0.1.0",
+		"@fi-workers/lint": "0.1.2",
 		"@types/node": "24.19.2",
 		"builtin-modules": "5.5.0",
 		"esbuild": "0.28.2",
