@@ -1,4 +1,4 @@
-import MarkdownIt from "markdown-it";
+import MarkdownItCtor, { type Env, type MarkdownIt } from "markdown-it";
 import { App, TFile } from "obsidian";
 import {
 	assetUrlPath,
@@ -13,7 +13,7 @@ export interface RenderedNote {
 	html: string;
 }
 
-interface RenderEnv {
+interface RenderEnv extends Env {
 	/** 링크 resolution의 기준이 되는 노트 경로 (metadataCache가 요구). */
 	sourcePath: string;
 }
@@ -23,7 +23,7 @@ interface RenderEnv {
  * 문서마다 달라지는 값(sourcePath)은 render()의 env로 전달한다.
  */
 function createMarkdownIt(app: App): MarkdownIt {
-	const md = new MarkdownIt({
+	const md = new MarkdownItCtor({
 		// 보안 기본값: Vault 안의 raw HTML을 그대로 브라우저에 흘리지 않는다.
 		// (localhost 전용이라도 노트에 붙여넣은 <script>가 그대로 실행되는 건 피한다.)
 		html: false,
