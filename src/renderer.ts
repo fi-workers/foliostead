@@ -1,5 +1,6 @@
-import MarkdownItCtor, { type Env, type MarkdownIt } from 'markdown-it';
-import { App, TFile } from 'obsidian';
+import MarkdownItCtor from 'markdown-it';
+import type { Env, MarkdownIt, StateCore, StateInline, Token } from 'markdown-it';
+import type { App, TFile } from 'obsidian';
 
 import { assetUrlPath, escapeHtml, isImageExtension, noteUrlPath, slugify } from './utils';
 
@@ -13,66 +14,9 @@ interface RenderEnv extends Env {
 	sourcePath: string;
 }
 
-/**
- * markdown-it 인스턴스는 한 번만 만들고 재사용한다.
- * 문서마다 달라지는 값(sourcePath)은 render()의 env로 전달한다.
- */
-function createMarkdownIt(app: App): MarkdownIt {
-	const md = new MarkdownItCtor({
-		// 보안 기본값: Vault 안의 raw HTML을 그대로 브라우저에 흘리지 않는다.
-		// (localhost 전용이라도 노트에 붙여넣은 <script>가 그대로 실행되는 건 피한다.)
-		html: false,
-		linkify: true,
-		breaks: false,
-		typographer: false,
-	});
-
-	md.use(wikilinkPlugin, app);
-	md.use(calloutPlugin);
-	md.use(headingIdPlugin);
-
-	// 넓은 표가 페이지 가로 스크롤을 만들지 않도록 감싼다.
-	md.renderer.rules.table_open = () => '<div class="table-wrap"><table>';
-	md.renderer.rules.table_close = () => '</table></div>';
-
-	return md;
-}
-
 /* ------------------------------------------------------------------ *
  * Obsidian wikilink: [[Note]] / [[Note|Alias]] / [[Note#Heading]] / ![[img.png]]
  * ------------------------------------------------------------------ */
-
-function wikilinkPlugin(md: MarkdownIt, app: App): void {
-	// 'link' 앞에 끼워 넣는다. backticks 규칙이 이보다 먼저 돌기 때문에
-	// 인라인 코드(`[[foo]]`) 안의 wikilink는 건드리지 않는다.
-	md.inline.ruler.before('link', 'wikilink', (state: any, silent: boolean): boolean => {
-		const src: string = state.src;
-		let pos: number = state.pos;
-
-		let isEmbed = false;
-		if (src.charCodeAt(pos) === 0x21 /* ! */) {
-			isEmbed = true;
-			pos++;
-		}
-		if (src.charCodeAt(pos) !== 0x5b /* [ */ || src.charCodeAt(pos + 1) !== 0x5b) return false;
-
-		const contentStart = pos + 2;
-		const end = src.indexOf(']]', contentStart);
-		if (end < 0) return false;
-
-		const raw = src.slice(contentStart, end);
-		if (raw.length === 0 || raw.includes('\n') || raw.includes('[')) return false;
-
-		if (!silent) {
-			const env = state.env as RenderEnv;
-			const token = state.push('html_inline', '', 0);
-			token.content = renderWikilink(app, raw, isEmbed, env?.sourcePath ?? '');
-		}
-
-		state.pos = end + 2;
-		return true;
-	});
-}
 
 function renderWikilink(app: App, raw: string, isEmbed: boolean, sourcePath: string): string {
 	const pipeIndex = raw.indexOf('|');
@@ -107,91 +51,180 @@ function renderWikilink(app: App, raw: string, isEmbed: boolean, sourcePath: str
 		return `<a href="${escapeHtml(assetUrlPath(dest.path))}">${escapeHtml(displayText)}</a>`;
 	}
 
-	const anchor = subpath && !subpath.startsWith('^') ? `#${slugify(subpath)}` : '';
+	const anchor = subpath.length > 0 && !subpath.startsWith('^') ? `#${slugify(subpath)}` : '';
 	return `<a href="${escapeHtml(noteUrlPath(dest.path) + anchor)}">${escapeHtml(displayText)}</a>`;
+}
+
+function sourcePathOf(env: Env): string {
+	const value = env['sourcePath'];
+	return typeof value === 'string' ? value : '';
+}
+
+function wikilinkPlugin(md: MarkdownIt, app: App): void {
+	// 'link' 앞에 끼워 넣는다. backticks 규칙이 이보다 먼저 돌기 때문에
+	// 인라인 코드(`[[foo]]`) 안의 wikilink는 건드리지 않는다.
+	md.inline.ruler.before('link', 'wikilink', (state: StateInline, silent: boolean): boolean => {
+		const { src } = state;
+		const isEmbed = src.startsWith('!', state.pos);
+		const pos = isEmbed ? state.pos + 1 : state.pos;
+
+		if (!src.startsWith('[[', pos)) {
+			return false;
+		}
+
+		const contentStart = pos + 2;
+		const end = src.indexOf(']]', contentStart);
+		if (end === -1) {
+			return false;
+		}
+
+		const raw = src.slice(contentStart, end);
+		if (raw.length === 0 || raw.includes('\n') || raw.includes('[')) {
+			return false;
+		}
+
+		if (!silent) {
+			const token = state.push('html_inline', '', 0);
+			token.content = renderWikilink(app, raw, isEmbed, sourcePathOf(state.env));
+		}
+
+		// markdown-it 인라인 규칙은 state.pos를 옮기는 것으로 소비한 길이를 알린다.
+		// oxlint-disable-next-line no-param-reassign -- markdown-it 규칙 API가 state 변경을 요구한다.
+		state.pos = end + 2;
+		return true;
+	});
 }
 
 /* ------------------------------------------------------------------ *
  * Obsidian callout: > [!note] Title
  * ------------------------------------------------------------------ */
 
-const CALLOUT_HEAD = /^\[!([A-Za-z][\w-]*)\][+-]?[ \t]*(.*)$/;
+const CALLOUT_HEAD = /^\[!([A-Za-z][\w-]*)\][+-]?[ \t]*(.*)$/u;
+
+function findMatchingBlockquoteClose(tokens: readonly Token[], openIndex: number): Token | undefined {
+	const level = tokens[openIndex]?.level;
+	return tokens.slice(openIndex + 1).find((token) => token.type === 'blockquote_close' && token.level === level);
+}
+
+/** blockquote_open 위치에서 callout을 변환한다. 변환했으면 true. */
+function convertCallout(state: StateCore, index: number): boolean {
+	const { tokens } = state;
+	const open = tokens[index];
+	const paragraphOpen = tokens[index + 1];
+	const inline = tokens[index + 2];
+	if (open?.type !== 'blockquote_open' || paragraphOpen?.type !== 'paragraph_open' || inline?.type !== 'inline') {
+		return false;
+	}
+
+	const newlineIndex = inline.content.indexOf('\n');
+	const firstLine = newlineIndex === -1 ? inline.content : inline.content.slice(0, newlineIndex);
+	const match = CALLOUT_HEAD.exec(firstLine);
+	const rawType = match?.[1];
+	if (match === null || rawType === undefined) {
+		return false;
+	}
+
+	const type = rawType.toLowerCase();
+	const explicitTitle = (match[2] ?? '').trim();
+	const title = explicitTitle.length > 0 ? explicitTitle : type.charAt(0).toUpperCase() + type.slice(1);
+	const typeSlug = slugify(type);
+
+	open.tag = 'div';
+	open.attrSet('class', `callout callout-${typeSlug.length > 0 ? typeSlug : 'note'}`);
+
+	const close = findMatchingBlockquoteClose(tokens, index);
+	if (close) {
+		close.tag = 'div';
+	}
+
+	const titleToken = new state.Token('html_block', '', 0);
+	titleToken.content = `<div class="callout-title">${escapeHtml(title)}</div>\n`;
+
+	const rest = newlineIndex === -1 ? '' : inline.content.slice(newlineIndex + 1);
+	if (rest.trim().length === 0) {
+		// 본문이 없으면 제목 문단 자체를 제목 블록으로 교체
+		tokens.splice(index + 1, 3, titleToken);
+	} else {
+		inline.content = rest;
+		tokens.splice(index + 1, 0, titleToken);
+	}
+	return true;
+}
 
 function calloutPlugin(md: MarkdownIt): void {
 	// inline 파싱 전에 돌려야 첫 줄(제목)을 떼어낸 나머지가 정상적으로 인라인 파싱된다.
-	md.core.ruler.before('inline', 'obsidian_callout', (state: any): void => {
-		const tokens = state.tokens;
-
-		for (let i = 0; i < tokens.length; i++) {
-			if (tokens[i].type !== 'blockquote_open') continue;
-
-			const paragraphOpen = tokens[i + 1];
-			const inline = tokens[i + 2];
-			if (!paragraphOpen || paragraphOpen.type !== 'paragraph_open') continue;
-			if (!inline || inline.type !== 'inline') continue;
-
-			const newlineIndex = inline.content.indexOf('\n');
-			const firstLine = newlineIndex === -1 ? inline.content : inline.content.slice(0, newlineIndex);
-			const match = CALLOUT_HEAD.exec(firstLine);
-			if (!match) continue;
-
-			const type = match[1].toLowerCase();
-			const title = match[2].trim() || type.charAt(0).toUpperCase() + type.slice(1);
-
-			tokens[i].tag = 'div';
-			tokens[i].attrSet('class', `callout callout-${slugify(type) || 'note'}`);
-
-			const closeIndex = findMatchingBlockquoteClose(tokens, i);
-			if (closeIndex !== -1) tokens[closeIndex].tag = 'div';
-
-			const titleToken = new state.Token('html_block', '', 0);
-			titleToken.content = `<div class="callout-title">${escapeHtml(title)}</div>\n`;
-
-			const rest = newlineIndex === -1 ? '' : inline.content.slice(newlineIndex + 1);
-			if (rest.trim().length === 0) {
-				// 본문이 없으면 제목 문단 자체를 제목 블록으로 교체
-				tokens.splice(i + 1, 3, titleToken);
-			} else {
-				inline.content = rest;
-				tokens.splice(i + 1, 0, titleToken);
-			}
+	md.core.ruler.before('inline', 'obsidian_callout', (state: StateCore): void => {
+		// 변환하면서 tokens 길이가 바뀌므로 매 반복마다 길이를 다시 읽는다.
+		for (let i = 0; i < state.tokens.length; i += 1) {
+			convertCallout(state, i);
 		}
 	});
-}
-
-function findMatchingBlockquoteClose(tokens: any[], openIndex: number): number {
-	const level = tokens[openIndex].level;
-	for (let i = openIndex + 1; i < tokens.length; i++) {
-		if (tokens[i].type === 'blockquote_close' && tokens[i].level === level) return i;
-	}
-	return -1;
 }
 
 /* ------------------------------------------------------------------ *
  * heading id (wikilink의 #Heading 앵커가 실제로 동작하도록)
  * ------------------------------------------------------------------ */
 
+function uniqueId(base: string, used: Set<string>): string {
+	let id = base;
+	let n = 1;
+	while (used.has(id)) {
+		id = `${base}-${n}`;
+		n += 1;
+	}
+	used.add(id);
+	return id;
+}
+
 function headingIdPlugin(md: MarkdownIt): void {
-	md.core.ruler.push('heading_ids', (state: any): void => {
-		const tokens = state.tokens;
+	md.core.ruler.push('heading_ids', (state: StateCore): void => {
+		const { tokens } = state;
 		const used = new Set<string>();
 
-		for (let i = 0; i < tokens.length; i++) {
-			if (tokens[i].type !== 'heading_open') continue;
+		tokens.forEach((token, i) => {
 			const inline = tokens[i + 1];
-			if (!inline || inline.type !== 'inline') continue;
-
+			if (token.type !== 'heading_open' || inline?.type !== 'inline') {
+				return;
+			}
 			const base = slugify(inline.content);
-			if (!base) continue;
-
-			let id = base;
-			let n = 1;
-			while (used.has(id)) id = `${base}-${n++}`;
-			used.add(id);
-
-			tokens[i].attrSet('id', id);
-		}
+			if (base.length > 0) {
+				token.attrSet('id', uniqueId(base, used));
+			}
+		});
 	});
+}
+
+/**
+ * markdown-it 인스턴스는 한 번만 만들고 재사용한다.
+ * 문서마다 달라지는 값(sourcePath)은 render()의 env로 전달한다.
+ */
+function createMarkdownIt(app: App): MarkdownIt {
+	const md = new MarkdownItCtor({
+		// 보안 기본값: Vault 안의 raw HTML을 그대로 브라우저에 흘리지 않는다.
+		// (localhost 전용이라도 노트에 붙여넣은 <script>가 그대로 실행되는 건 피한다.)
+		html: false,
+		linkify: true,
+		breaks: false,
+		typographer: false,
+	});
+
+	md.use(wikilinkPlugin, app);
+	md.use(calloutPlugin);
+	md.use(headingIdPlugin);
+
+	// 넓은 표가 페이지 가로 스크롤을 만들지 않도록 감싼다.
+	md.renderer.rules['table_open'] = () => '<div class="table-wrap"><table>';
+	md.renderer.rules['table_close'] = () => '</table></div>';
+
+	return md;
+}
+
+/** frontmatter는 본문에 렌더링하지 않는다. metadataCache 위치를 우선 쓰고, 없으면 정규식으로 fallback. */
+function stripFrontmatter(raw: string, endOffset?: number): string {
+	if (typeof endOffset === 'number' && endOffset > 0 && endOffset <= raw.length) {
+		return raw.slice(endOffset).replace(/^\r?\n/u, '');
+	}
+	return raw.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/u, '');
 }
 
 /* ------------------------------------------------------------------ *
@@ -199,9 +232,11 @@ function headingIdPlugin(md: MarkdownIt): void {
  * ------------------------------------------------------------------ */
 
 export class NoteRenderer {
+	private readonly app: App;
 	private readonly md: MarkdownIt;
 
-	constructor(private readonly app: App) {
+	constructor(app: App) {
+		this.app = app;
 		this.md = createMarkdownIt(app);
 	}
 
@@ -210,8 +245,8 @@ export class NoteRenderer {
 		const raw = await this.app.vault.cachedRead(file);
 		const cache = this.app.metadataCache.getFileCache(file);
 
-		const body = stripFrontmatter(raw, cache?.frontmatterPosition?.end?.offset);
-		const frontmatterTitle = cache?.frontmatter?.title;
+		const body = stripFrontmatter(raw, cache?.frontmatterPosition?.end.offset);
+		const frontmatterTitle: unknown = cache?.frontmatter?.['title'];
 		const title =
 			typeof frontmatterTitle === 'string' && frontmatterTitle.trim().length > 0
 				? frontmatterTitle.trim()
@@ -220,12 +255,4 @@ export class NoteRenderer {
 		const env: RenderEnv = { sourcePath: file.path };
 		return { title, html: this.md.render(body, env) };
 	}
-}
-
-/** frontmatter는 본문에 렌더링하지 않는다. metadataCache 위치를 우선 쓰고, 없으면 정규식으로 fallback. */
-function stripFrontmatter(raw: string, endOffset?: number): string {
-	if (typeof endOffset === 'number' && endOffset > 0 && endOffset <= raw.length) {
-		return raw.slice(endOffset).replace(/^\r?\n/, '');
-	}
-	return raw.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '');
 }

@@ -265,7 +265,8 @@ export interface PageOptions {
 const SOURCE_URL = 'https://github.com/w0nder-official/foliostead';
 
 export function renderPage({ title, bodyHtml, subtitle }: PageOptions): string {
-	const subtitleHtml = subtitle ? `<p class="doc-meta">${escapeHtml(subtitle)}</p>` : '';
+	const subtitleHtml =
+		subtitle !== undefined && subtitle.length > 0 ? `<p class="doc-meta">${escapeHtml(subtitle)}</p>` : '';
 	return `<!doctype html>
 <html lang="ko">
 <head>
@@ -320,7 +321,7 @@ export function renderIndexPage(vaultName: string, files: { path: string; url: s
 		.map((file) => {
 			const lastSlash = file.path.lastIndexOf('/');
 			const dir = lastSlash === -1 ? '' : file.path.slice(0, lastSlash + 1);
-			const name = file.path.slice(lastSlash + 1).replace(/\.md$/i, '');
+			const name = file.path.slice(lastSlash + 1).replace(/\.md$/iu, '');
 			return `<li><a href="${escapeHtml(file.url)}"><span class="dir">${escapeHtml(dir)}</span>${escapeHtml(name)}</a></li>`;
 		})
 		.join('\n');

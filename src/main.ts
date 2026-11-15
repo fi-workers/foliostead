@@ -1,14 +1,18 @@
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Plugin, TFile } from 'obsidian';
 
+import { notify } from './notice';
 import { FoliosteadServer } from './server';
-import { DEFAULT_SETTINGS, FoliosteadSettingTab, type FoliosteadSettings } from './settings';
+import { DEFAULT_SETTINGS, FoliosteadSettingTab, parseSettings } from './settings';
+import type { FoliosteadSettings } from './settings';
 import { noteUrlPath } from './utils';
 
+// Obsidian은 main.js의 기본 내보내기를 플러그인 클래스로 읽는다.
+// oxlint-disable-next-line import/no-default-export -- Obsidian 플러그인 진입점 규약
 export default class FoliosteadPlugin extends Plugin {
-	settings: FoliosteadSettings = { ...DEFAULT_SETTINGS };
+	override settings: FoliosteadSettings = { ...DEFAULT_SETTINGS };
 	private server: FoliosteadServer | null = null;
 
-	async onload(): Promise<void> {
+	override async onload(): Promise<void> {
 		await this.loadSettings();
 
 		this.server = new FoliosteadServer(this.app, () => this.settings);
@@ -17,10 +21,14 @@ export default class FoliosteadPlugin extends Plugin {
 		this.addCommand({
 			id: 'open-current-note-in-browser',
 			name: 'Open current note in browser',
-			callback: () => this.openCurrentNoteInBrowser(),
+			callback: () => {
+				this.openCurrentNoteInBrowser();
+			},
 		});
 
-		this.addRibbonIcon('globe', 'Open current note in browser', () => this.openCurrentNoteInBrowser());
+		this.addRibbonIcon('globe', 'Open current note in browser', () => {
+			this.openCurrentNoteInBrowser();
+		});
 
 		// metadataCache가 준비된 뒤에 서버를 띄운다.
 		// (link resolution과 파일 목록이 처음 요청부터 정확해야 하므로)
@@ -29,14 +37,17 @@ export default class FoliosteadPlugin extends Plugin {
 		});
 	}
 
-	async onunload(): Promise<void> {
+	override onunload(): void {
 		// 플러그인 비활성화 / Obsidian 종료 시 포트를 반드시 닫는다.
-		await this.server?.stop();
+		// Obsidian은 onunload를 기다리지 않으므로 stop()을 바로 시작만 한다.
+		const { server } = this;
 		this.server = null;
+		void server?.stop();
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data: unknown = await this.loadData();
+		this.settings = parseSettings(data);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -53,14 +64,14 @@ export default class FoliosteadPlugin extends Plugin {
 
 	private openCurrentNoteInBrowser(): void {
 		const baseUrl = this.server?.baseUrl();
-		if (!baseUrl) {
-			new Notice('Foliostead: 서버가 실행 중이 아닙니다. 설정에서 활성화하세요.');
+		if (baseUrl === undefined || baseUrl === null) {
+			notify('Foliostead: 서버가 실행 중이 아닙니다. 설정에서 활성화하세요.');
 			return;
 		}
 
 		const file = this.app.workspace.getActiveFile();
 		if (!(file instanceof TFile) || file.extension !== 'md') {
-			new Notice('Foliostead: 열려 있는 Markdown 노트가 없습니다.');
+			notify('Foliostead: 열려 있는 Markdown 노트가 없습니다.');
 			return;
 		}
 

@@ -1,8 +1,11 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 
-import { App, Notice, TFile } from 'obsidian';
+import type { App } from 'obsidian';
+import { TFile } from 'obsidian';
 
+import { notify } from './notice';
 import { NoteRenderer } from './renderer';
 import type { FoliosteadSettings } from './settings';
 import { renderErrorPage, renderIndexPage, renderNotFoundPage, renderPage } from './template';
@@ -13,16 +16,41 @@ export const HOST = '127.0.0.1';
 
 const ASSET_PREFIX = '/_assets/';
 
+function sendHtml(res: ServerResponse, status: number, html: string): void {
+	if (res.headersSent) {
+		res.end();
+		return;
+	}
+	const body = Buffer.from(html, 'utf8');
+	res.writeHead(status, {
+		'Content-Type': 'text/html; charset=utf-8',
+		'Content-Length': body.byteLength,
+		// 새로고침하면 항상 최신 내용이 보이도록 캐시하지 않는다.
+		'Cache-Control': 'no-store',
+		'X-Content-Type-Options': 'nosniff',
+	});
+	res.end(body);
+}
+
+function isLoopbackHost(host: string | undefined): boolean {
+	if (host === undefined || host.length === 0) {
+		return false;
+	}
+	const hostname = host.replace(/:\d+$/u, '').replaceAll(/^\[|\]$/gu, '');
+	return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
+}
+
 export class FoliosteadServer {
 	private server: Server | null = null;
 	private readonly sockets = new Set<Socket>();
 	private readonly renderer: NoteRenderer;
 	private activePort: number | null = null;
+	private readonly app: App;
+	private readonly getSettings: () => FoliosteadSettings;
 
-	constructor(
-		private readonly app: App,
-		private readonly getSettings: () => FoliosteadSettings,
-	) {
+	constructor(app: App, getSettings: () => FoliosteadSettings) {
+		this.app = app;
+		this.getSettings = getSettings;
 		this.renderer = new NoteRenderer(app);
 	}
 
@@ -43,19 +71,20 @@ export class FoliosteadServer {
 		await this.stop();
 
 		const { enabled, port } = this.getSettings();
-		if (!enabled) return;
+		if (!enabled) {
+			return;
+		}
 
 		const server = createServer((req, res) => {
-			this.handle(req, res).catch((error) => {
-				console.error('[foliostead] unhandled request error', error);
-				sendHtml(res, 500, renderErrorPage(String(error)));
-			});
+			void this.handleSafely(req, res);
 		});
 
 		// keep-alive 소켓이 남아 있으면 close()가 끝나지 않으므로 직접 추적한다.
 		server.on('connection', (socket) => {
 			this.sockets.add(socket);
-			socket.on('close', () => this.sockets.delete(socket));
+			socket.on('close', () => {
+				this.sockets.delete(socket);
+			});
 		});
 
 		await new Promise<void>((resolve) => {
@@ -63,9 +92,9 @@ export class FoliosteadServer {
 				this.server = null;
 				this.activePort = null;
 				if (error.code === 'EADDRINUSE') {
-					new Notice(`Foliostead: 포트 ${port}가 이미 사용 중입니다. 설정에서 다른 포트를 지정하세요.`, 8000);
+					notify(`Foliostead: 포트 ${port}가 이미 사용 중입니다. 설정에서 다른 포트를 지정하세요.`, 8000);
 				} else {
-					new Notice(`Foliostead: 서버 시작 실패 (${error.message})`, 8000);
+					notify(`Foliostead: 서버 시작 실패 (${error.message})`, 8000);
 				}
 				console.error('[foliostead] listen failed', error);
 				resolve();
@@ -75,7 +104,9 @@ export class FoliosteadServer {
 			server.listen(port, HOST, () => {
 				server.off('error', onStartupError);
 				// listen 이후의 런타임 에러는 로그만 남기고 서버를 유지한다.
-				server.on('error', (error) => console.error('[foliostead] server error', error));
+				server.on('error', (error) => {
+					console.error('[foliostead] server error', error);
+				});
 				this.server = server;
 				this.activePort = port;
 				console.log(`[foliostead] listening on http://${HOST}:${port}`);
@@ -85,18 +116,36 @@ export class FoliosteadServer {
 	}
 
 	async stop(): Promise<void> {
-		const server = this.server;
+		const { server } = this;
 		this.server = null;
 		this.activePort = null;
-		if (!server) return;
+		if (!server) {
+			return;
+		}
 
-		for (const socket of this.sockets) socket.destroy();
+		for (const socket of this.sockets) {
+			socket.destroy();
+		}
 		this.sockets.clear();
 
-		await new Promise<void>((resolve) => server.close(() => resolve()));
+		await new Promise<void>((resolve) => {
+			server.close(() => {
+				resolve();
+			});
+		});
 	}
 
 	/* ------------------------------ routing ------------------------------ */
+
+	/** 요청 처리 중 예외가 나도 서버가 죽지 않도록 500으로 응답한다. */
+	private async handleSafely(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		try {
+			await this.handle(req, res);
+		} catch (error) {
+			console.error('[foliostead] unhandled request error', error);
+			sendHtml(res, 500, renderErrorPage(String(error)));
+		}
+	}
 
 	private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -142,6 +191,8 @@ export class FoliosteadServer {
 		const files = this.app.vault
 			.getMarkdownFiles()
 			.map((file) => ({ path: file.path, url: noteUrlPath(file.path) }))
+			// map()이 만든 새 배열이라 제자리 정렬해도 안전하다. toSorted()는 Chromium 110+라 오래된 Obsidian 설치본에서 없을 수 있다.
+			// oxlint-disable-next-line unicorn/no-array-sort -- 위 호환성 이유
 			.sort((a, b) => a.path.localeCompare(b.path));
 
 		return renderIndexPage(this.app.vault.getName(), files);
@@ -177,15 +228,21 @@ export class FoliosteadServer {
 	 */
 	private findMarkdownFile(vaultPath: string): TFile | null {
 		const direct = this.app.vault.getAbstractFileByPath(`${vaultPath}.md`);
-		if (direct instanceof TFile) return direct;
+		if (direct instanceof TFile) {
+			return direct;
+		}
 
-		if (/\.md$/i.test(vaultPath)) {
+		if (/\.md$/iu.test(vaultPath)) {
 			const exact = this.app.vault.getAbstractFileByPath(vaultPath);
-			if (exact instanceof TFile) return exact;
+			if (exact instanceof TFile) {
+				return exact;
+			}
 		}
 
 		const resolved = this.app.metadataCache.getFirstLinkpathDest(vaultPath, '');
-		if (resolved instanceof TFile && resolved.extension === 'md') return resolved;
+		if (resolved instanceof TFile && resolved.extension === 'md') {
+			return resolved;
+		}
 
 		return null;
 	}
@@ -213,26 +270,4 @@ export class FoliosteadServer {
 		});
 		res.end(body);
 	}
-}
-
-function sendHtml(res: ServerResponse, status: number, html: string): void {
-	if (res.headersSent) {
-		res.end();
-		return;
-	}
-	const body = Buffer.from(html, 'utf-8');
-	res.writeHead(status, {
-		'Content-Type': 'text/html; charset=utf-8',
-		'Content-Length': body.byteLength,
-		// 새로고침하면 항상 최신 내용이 보이도록 캐시하지 않는다.
-		'Cache-Control': 'no-store',
-		'X-Content-Type-Options': 'nosniff',
-	});
-	res.end(body);
-}
-
-function isLoopbackHost(host: string | undefined): boolean {
-	if (!host) return false;
-	const hostname = host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
-	return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
 }
