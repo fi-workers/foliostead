@@ -27,11 +27,11 @@
   ],
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "builtin-modules": "5.5.0",
     "esbuild": "0.28.2",
     "obsidian": "1.14.4",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "markdown-it": "15.0.3"
