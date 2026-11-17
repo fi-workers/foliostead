@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   build:
@@ -26,8 +25,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Format check
         run: npm run format:check

@@ -90,11 +90,11 @@ cp main.js manifest.json "$VAULT/.obsidian/plugins/foliostead/"
 
 ## 개발
 
-린트 설정(`@fi-workers/lint`)은 GitHub Packages에서 받으므로 설치할 때 `read:packages` 권한이 있는
-토큰이 필요합니다. `.npmrc`가 `NODE_AUTH_TOKEN` 환경 변수를 읽습니다.
+린트 설정(`@fi-workers/lint`)은 공개 fi-workers 패키지 레지스트리(`packages.mocco.club`)에서 받습니다.
+`.npmrc`가 `@fi-workers` 스코프를 이 레지스트리로 보내며, 토큰은 필요 없습니다.
 
 ```bash
-NODE_AUTH_TOKEN=$(gh auth token) npm install
+npm install
 npm run dev           # esbuild watch (main.js를 계속 다시 만듦)
 npm run build         # production 번들
 npm run lint          # Oxlint (타입 인식 규칙 + TypeScript 7 타입 검사)
